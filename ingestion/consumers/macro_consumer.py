@@ -1,0 +1,133 @@
+# ingestion/consumers/macro_consumer.py
+
+import json
+import logging
+import os
+import signal
+from datetime import datetime, timezone
+from dotenv import load_dotenv
+import psycopg2
+from kafka import KafkaConsumer
+
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+DB_CONFIG = {
+    "host":     os.environ.get("POSTGRES_HOST", "localhost"),
+    "port":     os.environ.get("POSTGRES_PORT", "5432"),
+    "dbname":   os.environ.get("POSTGRES_DB", "lakehouse"),
+    "user":     os.environ.get("POSTGRES_USER", "lakehouse_user"),
+    "password": os.environ.get("POSTGRES_PASSWORD", ""),
+}
+
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_TOPIC = "macro_indicators"
+KAFKA_GROUP_ID = "macro_consumer_group"
+
+
+def get_db_connection():
+    return psycopg2.connect(**DB_CONFIG)
+
+
+def create_table(conn):
+    create_table_sql = """
+        CREATE TABLE IF NOT EXISTS bronze_macro_indicators (
+            id           SERIAL PRIMARY KEY,
+            indicator    VARCHAR(50)   NOT NULL,
+            series_code  VARCHAR(20),
+            source       VARCHAR(100),
+            value        NUMERIC(12,4),
+            period       VARCHAR(20),
+            ingested_at  TIMESTAMPTZ,
+            created_at   TIMESTAMPTZ   DEFAULT NOW(),
+            UNIQUE (indicator, period)
+        );
+    """
+    with conn.cursor() as cur:
+        cur.execute(create_table_sql)
+    conn.commit()
+    logger.info("Table bronze_macro_indicators is ready")
+
+
+def insert_record(conn, record: dict):
+    insert_sql = """
+        INSERT INTO bronze_macro_indicators (
+            indicator, series_code, source, value, period, ingested_at
+        )
+        VALUES (
+            %(indicator)s,
+            %(series_code)s,
+            %(source)s,
+            %(value)s,
+            %(period)s,
+            %(ingested_at)s
+        )
+        ON CONFLICT DO NOTHING;
+    """
+    with conn.cursor() as cur:
+        cur.execute(insert_sql, record)
+    conn.commit()
+
+
+def create_consumer() -> KafkaConsumer:
+    return KafkaConsumer(
+        KAFKA_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        group_id=KAFKA_GROUP_ID,
+        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
+    )
+
+
+running = True
+
+def handle_shutdown(signum, frame):
+    global running
+    logger.info("Shutdown signal received — stopping cleanly")
+    running = False
+
+signal.signal(signal.SIGINT, handle_shutdown)
+signal.signal(signal.SIGTERM, handle_shutdown)
+
+
+def run_consumer():
+    logger.info("Starting macro consumer")
+    conn = get_db_connection()
+    create_table(conn)
+    consumer = create_consumer()
+    logger.info(f"Listening on topic: {KAFKA_TOPIC}")
+    message_count = 0
+
+    for message in consumer:
+        if not running:
+            break
+
+        record = message.value
+
+        try:
+            insert_record(conn, record)
+            message_count += 1
+            logger.info(
+                f"Stored {record['indicator']} | "
+                f"value={record['value']} | "
+                f"period={record['period']} | "
+                f"total stored={message_count}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to insert {record.get('indicator', 'unknown')}: {e}")
+            conn.rollback()
+
+    consumer.close()
+    conn.close()
+    logger.info(f"Consumer stopped. Total messages stored: {message_count}")
+
+
+if __name__ == "__main__":
+    run_consumer()
+    
