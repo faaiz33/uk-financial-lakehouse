@@ -87,6 +87,7 @@ def create_consumer() -> KafkaConsumer:
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         auto_offset_reset="earliest",
         enable_auto_commit=True,
+        consumer_timeout_ms=10000,
     )
 
 

@@ -136,29 +136,18 @@ def insert_record(conn, record: dict):
     conn.commit()
 
 
-def create_consumer() -> KafkaConsumer:
-    """
-    Creates and returns a KafkaConsumer.
 
-    value_deserializer is the opposite of the producer's value_serializer.
-    Producer converted: Python dict → JSON string → bytes
-    Consumer converts:  bytes → JSON string → Python dict
-    """
+    
+def create_consumer() -> KafkaConsumer:
     return KafkaConsumer(
         KAFKA_TOPIC,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         group_id=KAFKA_GROUP_ID,
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
-        # auto_offset_reset="earliest" means:
-        # if this consumer has never run before (no bookmark exists),
-        # start reading from the very first message ever stored in the topic.
-        # If we used "latest" it would only read NEW messages arriving after startup.
-        # We use "earliest" so we pick up the 20 messages already sitting in Kafka.
         auto_offset_reset="earliest",
-        # enable_auto_commit=True means Kafka automatically saves our bookmark
-        # after each message is read. So if we crash and restart, we do not
-        # re-process messages we already handled.
         enable_auto_commit=True,
+        consumer_timeout_ms=10000,
+        # Exit if no new messages arrive within 10 seconds
     )
 
 
