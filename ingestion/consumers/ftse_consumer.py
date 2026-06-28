@@ -57,13 +57,13 @@ def get_db_connection():
 
 def create_table(conn):
     """
-    Creates the bronze_ftse_prices table if it does not already exist.
+    Creates the raw_ftse_prices table if it does not already exist.
     This runs every time the consumer starts — but IF NOT EXISTS means
     it is completely safe to run multiple times. If the table is already
     there, nothing happens.
     """
     create_table_sql = """
-        CREATE TABLE IF NOT EXISTS bronze_ftse_prices (
+        CREATE TABLE IF NOT EXISTS raw_ftse_prices (
             id               SERIAL PRIMARY KEY,
             ticker           VARCHAR(20)    NOT NULL,
             sector           VARCHAR(50),
@@ -94,12 +94,12 @@ def create_table(conn):
     conn.commit()
     # commit() saves the changes permanently
     # without commit(), the table creation would be lost when the connection closes
-    logger.info("Table bronze_ftse_prices is ready")
+    logger.info("Table raw_ftse_prices is ready")
 
 
 def insert_record(conn, record: dict):
     """
-    Inserts a single message from Kafka into the bronze_ftse_prices table.
+    Inserts a single message from Kafka into the raw_ftse_prices table.
 
     ON CONFLICT DO NOTHING handles duplicates.
     If we run the producer twice, the same data arrives in Kafka twice.
@@ -110,7 +110,7 @@ def insert_record(conn, record: dict):
     If the same ticker has the same market timestamp, it is the same data point.
     """
     insert_sql = """
-        INSERT INTO bronze_ftse_prices (
+        INSERT INTO raw_ftse_prices (
             ticker, sector, open, high, low, close,
             volume, ingested_at, market_timestamp
         )

@@ -36,7 +36,7 @@ def get_db_connection():
 
 def create_table(conn):
     create_table_sql = """
-        CREATE TABLE IF NOT EXISTS bronze_fx_rates (
+        CREATE TABLE IF NOT EXISTS raw_fx_rates (
             id              SERIAL PRIMARY KEY,
             from_currency   VARCHAR(10)  NOT NULL,
             to_currency     VARCHAR(10)  NOT NULL,
@@ -53,12 +53,12 @@ def create_table(conn):
     with conn.cursor() as cur:
         cur.execute(create_table_sql)
     conn.commit()
-    logger.info("Table bronze_fx_rates is ready")
+    logger.info("Table raw_fx_rates is ready")
 
 
 def insert_record(conn, record: dict):
     insert_sql = """
-        INSERT INTO bronze_fx_rates (
+        INSERT INTO raw_fx_rates (
             from_currency, to_currency, exchange_rate,
             high, low, volume, last_refreshed, ingested_at
         )

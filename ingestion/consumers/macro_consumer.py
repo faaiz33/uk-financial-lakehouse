@@ -36,7 +36,7 @@ def get_db_connection():
 
 def create_table(conn):
     create_table_sql = """
-        CREATE TABLE IF NOT EXISTS bronze_macro_indicators (
+        CREATE TABLE IF NOT EXISTS raw_macro_indicators (
             id           SERIAL PRIMARY KEY,
             indicator    VARCHAR(50)   NOT NULL,
             series_code  VARCHAR(20),
@@ -51,12 +51,12 @@ def create_table(conn):
     with conn.cursor() as cur:
         cur.execute(create_table_sql)
     conn.commit()
-    logger.info("Table bronze_macro_indicators is ready")
+    logger.info("Table raw_macro_indicators is ready")
 
 
 def insert_record(conn, record: dict):
     insert_sql = """
-        INSERT INTO bronze_macro_indicators (
+        INSERT INTO raw_macro_indicators (
             indicator, series_code, source, value, period, ingested_at
         )
         VALUES (
