@@ -1,5 +1,7 @@
 version: '3.8'
+
 services:
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: zookeeper
@@ -30,7 +32,12 @@ services:
       POSTGRES_PASSWORD: lakehouse_pass
       POSTGRES_DB: lakehouse
     volumes:
+  metabase_data:
       - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  metabase_data:
+  postgres_data:
 
   metabase:
     image: metabase/metabase:v0.47.7
@@ -40,10 +47,7 @@ services:
     environment:
       MB_DB_TYPE: h2
     volumes:
+  metabase_data:
       - metabase_data:/metabase-data
     depends_on:
       - postgres
-
-volumes:
-  postgres_data:
-  metabase_data:
