@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: fact_daily_prices
+    description: "Daily FTSE 100 stock prices — gold layer fact table"
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+      - name: close_price
+        description: "Closing price in pence"
+        tests:
+          - not_null
+      - name: sector
+        description: "Industry sector"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["Financials", "Energy", "Healthcare", "Consumer",
+                       "Technology", "Materials", "Utilities"]
+      - name: daily_return_pct
+        description: "Daily return as a percentage"
+        tests:
+          - not_null
+
+  - name: fact_fx_rates
+    description: "GBP FX rates — gold layer fact table"
+    columns:
+      - name: currency_pair
+        description: "Currency pair e.g. GBP/USD"
+        tests:
+          - not_null
+      - name: exchange_rate
+        description: "Exchange rate"
+        tests:
+          - not_null
+
+  - name: mart_sector_performance
+    description: "Sector performance aggregations"
+    columns:
+      - name: sector
+        description: "Industry sector"
+        tests:
+          - not_null
+      - name: avg_return_pct
+        description: "Average return across stocks in sector"
+        tests:
+          - not_null
+
+  - name: mart_macro_dashboard
+    description: "Macro economic indicators"
+    columns:
+      - name: indicator
+        description: "Indicator name"
+        tests:
+          - not_null
+      - name: value
+        description: "Indicator value"
+        tests:
+          - not_null

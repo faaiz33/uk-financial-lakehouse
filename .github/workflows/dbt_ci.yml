@@ -1,0 +1,137 @@
+# .github/workflows/dbt_ci.yml
+# Runs dbt tests on every pull request to main
+# This ensures no broken SQL transformations ever reach production
+
+name: dbt CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  dbt-test:
+    runs-on: ubuntu-latest
+
+    services:
+      # Spin up a PostgreSQL container for the CI run
+      # This is a fresh database — not your local one
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: lakehouse_user
+          POSTGRES_PASSWORD: lakehouse_pass
+          POSTGRES_DB: lakehouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dbt
+        run: pip install dbt-postgres==1.9.0
+
+      - name: Create dbt profiles
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'PROFILE'
+          uk_financial_lakehouse:
+            outputs:
+              dev:
+                type: postgres
+                host: localhost
+                port: 5432
+                user: lakehouse_user
+                password: lakehouse_pass
+                dbname: lakehouse
+                schema: public
+                threads: 1
+            target: dev
+          PROFILE
+
+      - name: Seed test data into CI database
+        # We need some data in the raw tables for dbt to transform
+        # In CI we insert minimal seed data directly via SQL
+        run: |
+          PGPASSWORD=lakehouse_pass psql -h localhost -U lakehouse_user -d lakehouse << 'SQL'
+          CREATE TABLE IF NOT EXISTS raw_ftse_prices (
+            id SERIAL PRIMARY KEY,
+            ticker VARCHAR(20),
+            sector VARCHAR(50),
+            open NUMERIC(12,4),
+            high NUMERIC(12,4),
+            low NUMERIC(12,4),
+            close NUMERIC(12,4),
+            volume BIGINT,
+            ingested_at TIMESTAMPTZ,
+            market_timestamp VARCHAR(50),
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE (ticker, market_timestamp)
+          );
+          INSERT INTO raw_ftse_prices (ticker, sector, open, high, low, close, volume, ingested_at, market_timestamp)
+          VALUES
+            ('HSBA.L', 'Financials', 610.0, 615.0, 608.0, 612.0, 100000, NOW(), '2026-01-01 09:00:00+00'),
+            ('BP.L',   'Energy',     480.0, 485.0, 478.0, 482.0, 200000, NOW(), '2026-01-01 09:00:00+00'),
+            ('AZN.L',  'Healthcare', 14000.0, 14100.0, 13950.0, 14050.0, 50000, NOW(), '2026-01-01 09:00:00+00')
+          ON CONFLICT DO NOTHING;
+
+          CREATE TABLE IF NOT EXISTS raw_fx_rates (
+            id SERIAL PRIMARY KEY,
+            from_currency VARCHAR(10),
+            to_currency VARCHAR(10),
+            exchange_rate NUMERIC(12,6),
+            high NUMERIC(12,6),
+            low NUMERIC(12,6),
+            volume BIGINT,
+            last_refreshed VARCHAR(50),
+            ingested_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE (from_currency, to_currency, last_refreshed)
+          );
+          INSERT INTO raw_fx_rates (from_currency, to_currency, exchange_rate, high, low, volume, last_refreshed, ingested_at)
+          VALUES
+            ('GBP', 'USD', 1.2734, 1.2750, 1.2720, 0, '2026-01-01 09:00:00', NOW()),
+            ('GBP', 'EUR', 1.1821, 1.1835, 1.1810, 0, '2026-01-01 09:00:00', NOW())
+          ON CONFLICT DO NOTHING;
+
+          CREATE TABLE IF NOT EXISTS raw_macro_indicators (
+            id SERIAL PRIMARY KEY,
+            indicator VARCHAR(50),
+            series_code VARCHAR(20),
+            source VARCHAR(100),
+            value NUMERIC(12,4),
+            period VARCHAR(20),
+            ingested_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE (indicator, period)
+          );
+          INSERT INTO raw_macro_indicators (indicator, series_code, source, value, period, ingested_at)
+          VALUES
+            ('base_rate', 'IUDBEDR', 'Bank of England (fallback)', 3.75, 'Jun 2026', NOW()),
+            ('unemployment_rate', 'MGSX', 'ONS', 5.0, '2026 Q1', NOW()),
+            ('gdp_growth', 'ABMI', 'ONS', 0.6, '2026 Q1', NOW()),
+            ('inflation_cpi', 'D7G7', 'ONS', 3.1, '2026 Q1', NOW())
+          ON CONFLICT DO NOTHING;
+          SQL
+
+      - name: Run dbt
+        run: |
+          cd dbt
+          dbt run
+
+      - name: Run dbt tests
+        run: |
+          cd dbt
+          dbt test
