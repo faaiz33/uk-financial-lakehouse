@@ -1,221 +1,238 @@
 # 🇬🇧 UK Financial Markets Lakehouse Pipeline
 
-> A production-grade, end-to-end data engineering portfolio project ingesting real UK financial and economic data through a medallion lakehouse architecture — from live APIs to business dashboards.
+![Python](https://img.shields.io/badge/Python-3.13-blue?logo=python)
+![dbt](https://img.shields.io/badge/dbt-1.9.8-orange?logo=dbt)
+![Airflow](https://img.shields.io/badge/Airflow-3.2.2-017CEE?logo=apache-airflow)
+![Kafka](https://img.shields.io/badge/Kafka-7.4.0-231F20?logo=apache-kafka)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?logo=postgresql)
+![GitHub Actions](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?logo=github-actions)
+![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-FF4B4B?logo=streamlit)
+
+> **Production-grade, end-to-end data engineering pipeline** ingesting real UK financial and economic data — from live APIs through Kafka streaming, dbt medallion transformations, Airflow orchestration, and Great Expectations data quality checks — served to two live dashboards.
 
 ---
 
-## 🏗️ Architecture
----
+## 📐 Architecture
+┌─────────────────────────────────────┐
+                    │           DATA SOURCES               │
+                    │  Yahoo Finance · ONS · Bank of England│
+                    └──────────────┬──────────────────────┘
+                                   │
+                                   ▼
+                    ┌─────────────────────────────────────┐
+                    │         INGESTION LAYER              │
+                    │    Python Producers → Apache Kafka   │
+                    │  ftse_prices · fx_rates · macro_indicators│
+                    └──────────────┬──────────────────────┘
+                                   │
+                      ┌────────────┼────────────┐
+                      ▼            ▼             ▼
+               ┌─────────────────────────────────────┐
+               │           BRONZE LAYER               │
+               │    Kafka Consumers → PostgreSQL      │
+               │  raw_ftse_prices · raw_fx_rates      │
+               │      raw_macro_indicators            │
+               └──────────────┬──────────────────────┘
+                              │
+                              ▼
+               ┌─────────────────────────────────────┐
+               │           SILVER LAYER               │
+               │           dbt models                 │
+               │  Cleaning · Typing · Derived columns │
+               └──────────────┬──────────────────────┘
+                              │
+                              ▼
+               ┌─────────────────────────────────────┐
+               │            GOLD LAYER                │
+               │           dbt models                 │
+               │  fact_daily_prices · fact_fx_rates   │
+               │  mart_sector_performance             │
+               │  mart_macro_dashboard                │
+               └──────────┬──────────────────────────┘
+                          │
+           ┌──────────────┴──────────────┐
+           ▼                             ▼┌─────────────────────┐      ┌──────────────────────────┐
+│  STREAMLIT          │      │  METABASE                 │
+│  localhost:8501     │      │  localhost:3000           │
+│  Engineering demo   │      │  Business BI demo         │
+└─────────────────────┘      └──────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                  ORCHESTRATION                        │
+│              Apache Airflow 3.2.2                    │
+│   ingest_market_data · ingest_macro_data             │
+│              run_dbt_pipeline                        │
+└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│               DATA QUALITY                           │
+│            Great Expectations                        │
+│      13 automated checks · exit code CI signal      │
+└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                    CI/CD                             │
+│               GitHub Actions                        │
+│        dbt test on every push to main               │
+└──────────────────────────────────────────────────────┘---
 
 ## 📊 Data Sources
 
-| Source | Data | Method |
-|--------|------|--------|
-| Yahoo Finance (yfinance) | FTSE 100 stock prices — OHLCV, 20 stocks across 7 sectors | Free Python library, no API key |
-| Yahoo Finance (yfinance) | GBP/USD and GBP/EUR exchange rates | Free Python library, no API key |
-| ONS API | UK GDP growth, unemployment rate, CPI inflation | Official UK government API, free |
-| Bank of England | UK base interest rate | Official API with hardcoded fallback |
+| Source | Data | Cost |
+|--------|------|------|
+| 🟡 Yahoo Finance | FTSE 100 prices — 20 stocks, 7 sectors, OHLCV | Free |
+| 🟡 Yahoo Finance | GBP/USD · GBP/EUR exchange rates | Free |
+| 🟢 ONS API | GDP growth · Unemployment · CPI inflation | Free |
+| 🟢 Bank of England | UK base interest rate | Free |
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Tool | Version |
-|-------|------|---------|
-| Streaming | Apache Kafka | Confluent 7.4.0 |
-| Message broker | Apache Zookeeper | Confluent 7.4.0 |
-| Storage | PostgreSQL | 15 |
-| Transformation | dbt Core | 1.9.8 |
-| Orchestration | Apache Airflow | 3.2.2 |
-| Data Quality | Great Expectations | 1.18.2 |
-| Dashboard (engineering) | Streamlit | 1.58.0 |
-| Dashboard (business) | Metabase | 0.47.7 |
-| CI/CD | GitHub Actions | — |
-| Containerisation | Docker + Docker Compose | — |
-| Language | Python | 3.13 |
+| Layer | Tool | Why This Tool |
+|-------|------|---------------|
+| 🔴 Streaming | Apache Kafka 7.4.0 | Decouples producers from consumers. Buffers data if DB goes down. Industry standard at every major bank. |
+| 🐘 Storage | PostgreSQL 15 | Reliable, widely used relational DB. Runs in Docker. |
+| 🟠 Transformation | dbt Core 1.9.8 | Version-controlled SQL. Dependency management. Built-in testing. Used by Revolut, Monzo. |
+| 🌀 Orchestration | Apache Airflow 3.2.2 | Industry standard scheduler. DAGs, retries, alerting. |
+| ✅ Data Quality | Great Expectations 1.18.2 | Business-rule validation beyond what dbt tests cover. |
+| 🔴 Dashboard | Streamlit 1.58.0 | Python dashboards for engineering demos. |
+| 🔵 BI Tool | Metabase 0.47.7 | Drag-and-drop BI for business stakeholder demos. |
+| ⚙️ CI/CD | GitHub Actions | Automated dbt tests on every pull request. |
+| 🐳 Container | Docker + Compose | Reproducible local environment. |
 
 ---
 
 ## 🗂️ Project Structure
 uk-financial-lakehouse/
-├── ingestion/
-│   ├── producers/          # Kafka producers — fetch from APIs
+│
+├── 📁 ingestion/
+│   ├── producers/              # Fetch from APIs → publish to Kafka
 │   │   ├── ftse_producer.py
 │   │   ├── fx_producer.py
 │   │   └── macro_producer.py
-│   └── consumers/          # Kafka consumers — write to PostgreSQL
+│   └── consumers/              # Read from Kafka → write to PostgreSQL
 │       ├── ftse_consumer.py
 │       ├── fx_consumer.py
 │       └── macro_consumer.py
-├── dbt/
+│
+├── 📁 dbt/
 │   └── models/
-│       ├── bronze/         # Raw views over source tables
-│       ├── silver/         # Cleaned, typed, derived columns
-│       └── gold/           # Business-ready facts and marts
-├── airflow/
-│   └── dags/              # Three scheduled DAGs
-│       ├── ingest_market_data.py
-│       ├── ingest_macro_data.py
-│       └── run_dbt_pipeline.py
-├── great_expectations/    # Data quality checks
+│       ├── bronze/             # Raw views over source tables
+│       ├── silver/             # Cleaned, typed, derived columns
+│       └── gold/               # Business-ready facts and marts
+│
+├── 📁 airflow/
+│   └── dags/
+│       ├── ingest_market_data.py   # 8am Mon-Fri
+│       ├── ingest_macro_data.py    # 9am Mon-Fri
+│       └── run_dbt_pipeline.py     # 10am Mon-Fri
+│
+├── 📁 great_expectations/      # 13 automated data quality checks
 │   └── run_checkpoint.py
-├── dashboard/             # Streamlit dashboard
-│   ├── app.py             # Market Overview (Page 1)
+│
+├── 📁 dashboard/               # Streamlit — 4 pages
+│   ├── app.py                  # Market Overview
 │   └── pages/
 │       ├── 1_Sector_Performance.py
 │       ├── 2_Macro_Environment.py
 │       └── 3_Pipeline_Health.py
-├── docker-compose.yml     # Kafka + Zookeeper + PostgreSQL + Metabase
-└── .github/
-└── workflows/
-└── dbt_ci.yml     # GitHub Actions CI
----
-
-## 🚀 Running the Project
-
-### Prerequisites
-- Docker Desktop
-- Python 3.11+
-- Git
-
-### 1. Clone and set up
-
-```bash
-git clone https://github.com/faaiz33/uk-financial-lakehouse.git
-cd uk-financial-lakehouse
-python -m venv venv
-source venv/bin/activate
-pip install -r ingestion/requirements.txt
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-# Edit .env with your credentials
-```
-
-### 3. Start infrastructure
-
-```bash
-docker-compose up -d
-```
-
-### 4. Run ingestion
-
-```bash
-python ingestion/producers/ftse_producer.py
-python ingestion/producers/fx_producer.py
-python ingestion/producers/macro_producer.py
-
-python ingestion/consumers/ftse_consumer.py
-python ingestion/consumers/fx_consumer.py
-python ingestion/consumers/macro_consumer.py
-```
-
-### 5. Run dbt transformations
-
-```bash
-cd dbt
-dbt run
-dbt test
-```
-
-### 6. Start dashboards
-
-```bash
-# Streamlit
-streamlit run dashboard/app.py
-
-# Metabase already running via Docker at localhost:3000
-```
-
-### 7. Start Airflow
-
-```bash
-export AIRFLOW_HOME=/path/to/uk-financial-lakehouse/airflow
-airflow standalone
-```
-
+│
+├── 🐳 docker-compose.yml       # Kafka + Zookeeper + PostgreSQL + Metabase
+└── ⚙️ .github/workflows/dbt_ci.yml
 ---
 
 ## 📈 Medallion Architecture
 
-| Layer | Tables | Purpose |
-|-------|--------|---------|
-| **Bronze** | `bronze_ftse_prices`, `bronze_fx_rates`, `bronze_macro_indicators` | Raw data, exact copy of source. Never modified. Source of truth for reprocessing. |
-| **Silver** | `silver_ftse_prices`, `silver_fx_rates`, `silver_macro_indicators` | Cleaned, deduplicated, type-cast. Derived columns like `daily_return_pct` added. |
-| **Gold** | `fact_daily_prices`, `fact_fx_rates`, `mart_sector_performance`, `mart_macro_dashboard` | Business-ready aggregations. What dashboards query directly. |
+| Layer | Materialisation | Tables | Purpose |
+|-------|----------------|--------|---------|
+| 🥉 **Bronze** | View | `bronze_ftse_prices` `bronze_fx_rates` `bronze_macro_indicators` | Exact copy of raw source data. Never modified. Reprocess from here if anything breaks. |
+| 🥈 **Silver** | View | `silver_ftse_prices` `silver_fx_rates` `silver_macro_indicators` | Cleaned, deduplicated, type-cast. Adds `daily_return_pct` and other derived columns. |
+| 🥇 **Gold** | Table | `fact_daily_prices` `fact_fx_rates` `mart_sector_performance` `mart_macro_dashboard` | Business-ready aggregations. What dashboards query. Optimised for reads. |
 
 ---
 
-## ✅ Data Quality
-
-13 automated Great Expectations checks run after every dbt pipeline:
-
-| Table | Checks |
-|-------|--------|
-| `fact_daily_prices` | ticker not null · close_price not null · close_price between 0-1M · volume between 0-1B · daily_return_pct between -50% and +50% · sector in valid set |
-| `fact_fx_rates` | currency_pair not null · exchange_rate not null · exchange_rate between 0.1-10 · from_currency = GBP |
-| `mart_macro_dashboard` | indicator not null · value not null · value between -20 and 100 |
+## ✅ Data Quality — 13 Checks
+fact_daily_prices
+├── ticker → not null
+├── close_price → not null, between 0 and 1,000,000
+├── volume → between 0 and 1,000,000,000
+├── daily_return_pct → between -50% and +50%
+└── sector → in [Financials, Energy, Healthcare, Consumer, Technology, Materials, Utilities]
+fact_fx_rates
+├── currency_pair → not null
+├── exchange_rate → not null, between 0.1 and 10
+└── from_currency → must be GBP
+mart_macro_dashboard
+├── indicator → not null
+├── value → not null
+└── value → between -20 and 100
+Exit code 0 = all pass → Airflow task succeeds
+Exit code 1 = any fail → Airflow task fails → retry → alert
 
 ---
 
 ## 🔄 Airflow DAGs
-
-| DAG | Schedule | Tasks |
-|-----|----------|-------|
-| `ingest_market_data` | 08:00 Mon-Fri | FTSE producer → FTSE consumer · FX producer → FX consumer |
-| `ingest_macro_data` | 09:00 Mon-Fri | Macro producer → Macro consumer |
-| `run_dbt_pipeline` | 10:00 Mon-Fri | dbt bronze → dbt silver → dbt gold → GX checkpoint |
+08:00 Mon-Fri    ingest_market_data
+ftse_producer ──► ftse_consumer
+fx_producer ────► fx_consumer
+09:00 Mon-Fri    ingest_macro_data
+macro_producer ──► macro_consumer
+10:00 Mon-Fri    run_dbt_pipeline
+dbt bronze ──► dbt silver ──► dbt gold ──► GX checkpoint
 
 ---
 
 ## 💬 Key Design Decisions
 
 **Why Kafka and not direct database writes?**
-Decoupling. If PostgreSQL goes down, Kafka buffers messages. When it recovers, consumers replay from the last offset. Nothing is lost. Also enables multiple consumers reading the same topic independently.
+If PostgreSQL goes down, Kafka buffers messages on disk. When it recovers, consumers replay from the last offset. Nothing is lost. Direct writes lose data permanently during outages.
 
 **Why medallion architecture?**
-Bronze preserves raw data forever — if transformation logic has a bug, reprocess from bronze. Silver adds business logic once, cleanly. Gold is optimised for queries. Each layer serves a different consumer with different needs.
+Bronze is immutable — if transformation logic has a bug, reprocess from bronze without re-fetching from APIs. Silver cleans once. Gold is optimised for query performance. Each layer has one job.
 
 **Why dbt and not raw SQL scripts?**
-Version control, dependency management, built-in testing, and documentation. dbt runs models in the correct order automatically. Raw SQL scripts require manual execution order management.
+dbt manages execution order automatically via dependency graphs. Every model is version-controlled, testable, and self-documenting. Raw scripts require manual order management and have no built-in testing.
 
 **Why Great Expectations alongside dbt tests?**
-dbt tests cover structural integrity (not null, uniqueness). GX covers business rules (value ranges, set membership). Together they catch both schema problems and data quality problems.
-
----
-
-## 📁 Data Flow
-Yahoo Finance API
-↓ (yfinance Python library)
-ftse_producer.py → Kafka: ftse_prices → ftse_consumer.py
-↓
-raw_ftse_prices (PostgreSQL)
-↓ (dbt)
-bronze_ftse_prices (view)
-↓ (dbt)
-silver_ftse_prices (view) ← adds daily_return_pct
-↓ (dbt)
-fact_daily_prices (table) ← adds sector_rank, volume_rank
-mart_sector_performance (table) ← aggregated by sector
-↓
-Streamlit dashboard · Metabase BI
+dbt tests cover structural integrity — not null, uniqueness, referential integrity. GX covers business rules — value ranges, categorical membership, freshness. Together they catch both schema bugs and data quality regressions.
 
 ---
 
 ## 🏦 Real World Context
 
-This architecture mirrors what financial institutions run in production:
-
-- **Kafka** — used by every major bank for real-time event streaming
-- **dbt** — used by Revolut, Monzo, and most modern data teams
-- **Medallion architecture** — standard pattern at Databricks customers
-- **Airflow** — industry standard orchestrator at scale
-- **Great Expectations** — used for data contracts in regulated industries
+| Tool | Where It's Used |
+|------|----------------|
+| Kafka | Every major investment bank — JPMorgan, Goldman, Barclays |
+| dbt | Revolut, Monzo, Airbnb, GitLab |
+| Medallion architecture | Databricks, Delta Lake, most modern lakehouses |
+| Airflow | Uber, Airbnb, Twitter — the original authors |
+| Great Expectations | Data contracts in regulated financial services |
 
 ---
 
-*Built with Python 3.13 · dbt 1.9.8 · Airflow 3.2.2 · Kafka 7.4.0 · PostgreSQL 15*
+## 🚀 Quick Start
 
+```bash
+# 1. Clone
+git clone https://github.com/faaiz33/uk-financial-lakehouse.git
+cd uk-financial-lakehouse
+
+# 2. Environment
+python -m venv venv && source venv/bin/activate
+pip install -r ingestion/requirements.txt
+
+# 3. Infrastructure
+docker-compose up -d
+
+# 4. Ingest
+python ingestion/producers/ftse_producer.py
+python ingestion/consumers/ftse_consumer.py
+
+# 5. Transform
+cd dbt && dbt run && dbt test
+
+# 6. Dashboard
+streamlit run dashboard/app.py
+```
+
+---
+
+*🇬🇧 Built with real UK market data · Python 3.13 · dbt · Airflow · Kafka · PostgreSQL · Great Expectations*
