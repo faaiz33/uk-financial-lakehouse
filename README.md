@@ -218,10 +218,4 @@ This architecture mirrors what financial institutions run in production:
 ---
 
 *Built with Python 3.13 · dbt 1.9.8 · Airflow 3.2.2 · Kafka 7.4.0 · PostgreSQL 15*
-Eclear
-clear
-exit
-rm README.md
-git add .
-git commit -m "chore: remove README"
-git push origin main
+
