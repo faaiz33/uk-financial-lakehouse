@@ -1,5 +1,5 @@
 # airflow/dags/run_dbt_pipeline.py
-# DAG 3: Run dbt transformations daily
+# DAG 3: Run dbt transformations daily, then validate with Great Expectations
 
 from datetime import datetime, timedelta
 from airflow.sdk import DAG
@@ -10,6 +10,7 @@ import os
 PROJECT_ROOT = "/Users/mohammedaminulfaaiz/uk-financial-lakehouse"
 DBT_DIR = os.path.join(PROJECT_ROOT, "dbt")
 DBT = os.path.join(PROJECT_ROOT, "venv/bin/dbt")
+PYTHON = os.path.join(PROJECT_ROOT, "venv/bin/python")
 
 default_args = {
     "owner": "airflow",
@@ -40,14 +41,26 @@ def run_dbt_silver():
 def run_dbt_gold():
     run_dbt(select="gold")
 
+def run_data_quality_checks():
+    script_path = f"{PROJECT_ROOT}/great_expectations/run_checkpoint.py"
+    result = subprocess.run(
+        [PYTHON, script_path],
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT
+    )
+    print(result.stdout)
+    if result.returncode != 0:
+        raise Exception(f"Data quality checks failed:\n{result.stdout}\n{result.stderr}")
+
 with DAG(
     dag_id="run_dbt_pipeline",
     default_args=default_args,
-    description="Run dbt bronze -> silver -> gold transformation pipeline",
-    schedule="0 10 * * 1-5",  # 10am Monday to Friday
+    description="Run dbt bronze -> silver -> gold pipeline, then validate with Great Expectations",
+    schedule="0 10 * * 1-5",
     start_date=datetime(2026, 1, 1),
     catchup=False,
-    tags=["dbt", "transformation"],
+    tags=["dbt", "transformation", "data-quality"],
 ) as dag:
 
     bronze = PythonOperator(
@@ -65,4 +78,9 @@ with DAG(
         python_callable=run_dbt_gold,
     )
 
-    bronze >> silver >> gold
+    data_quality = PythonOperator(
+        task_id="run_data_quality_checks",
+        python_callable=run_data_quality_checks,
+    )
+
+    bronze >> silver >> gold >> data_quality
